@@ -53,22 +53,14 @@ pub fn main() !void {
     var buf: []u8 = &buff;
     std.mem.copy(u8, buf, " " ** maxMsgLen);
 
+    var timer = try std.time.Timer.start();
+
     while (true) {
         // std.debug.warn("{} {}\n", .{ fifo.readableLength(), bytes.readableLength() });
         var chunk = fifo.readableSlice(0);
         if (chunk.len > 0) {
             ds.DS_FeedAudioContent(stream, chunk.ptr, @intCast(c_uint, chunk.len));
             fifo.discard(chunk.len);
-            const s = ds.DS_IntermediateDecode(stream);
-            defer ds.DS_FreeString(s);
-            const n = ds.strlen(s);
-            if (n > 0) {
-                const newMsg = s[(if (n > maxMsgLen) n - maxMsgLen else 0)..n];
-                if (!std.hash_map.eqlString(newMsg, buf)) {
-                    std.mem.copy(u8, buf, newMsg);
-                    std.debug.warn("{}\n", .{buf});
-                }
-            }
         } else {
             {
                 const writable = bytes.writableSlice(0);
@@ -94,6 +86,20 @@ pub fn main() !void {
                 }
                 fifo.update(i);
                 bytes.discard(i * 2);
+            }
+        }
+
+        if (timer.read() > std.time.ns_per_s / 2) {
+            timer.reset();
+            const s = ds.DS_IntermediateDecode(stream);
+            defer ds.DS_FreeString(s);
+            const n = ds.strlen(s);
+            if (n > 0) {
+                const newMsg = s[(if (n > maxMsgLen) n - maxMsgLen else 0)..n];
+                if (!std.hash_map.eqlString(newMsg, buf)) {
+                    std.mem.copy(u8, buf, newMsg);
+                    std.debug.warn("{}\n", .{buf});
+                }
             }
         }
     }
